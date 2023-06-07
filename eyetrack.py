@@ -22,6 +22,8 @@ class eyeTracker:
         self.slidingWindow = []
         self.ldir, self.rdir = 0, 0
         self.curFrame = None
+        self.eye_width, self.eye_height = 0, 0
+        self.track_cnt = 0
 
         # 綠框、瞳孔、平均
         self.eyeRect = [[], []]
@@ -39,11 +41,14 @@ class eyeTracker:
         bias = 5
         xmin, ymin = min(x) -bias, min(y) -bias
         xmax, ymax = max(x) +bias, max(y) +bias
+        self.eye_width = xmax - xmin
+        self.eye_height = ymax - ymin
+        # print(self.eye_width, self.eye_height)
         return [(xmin, ymin), [xmax, ymax]]
 
     # 將當前與平均判斷單眼方向 沒動0 上1 右2 下3 左4
     def judge_dir(self, curPos, mainPos):
-        xyScale, eyeThresh, maxThresh = 1.5, 8, 20
+        xyScale, eyeThresh, maxThresh = 2.5, self.eye_width // 4, self.eye_width
         difx, dify = curPos - mainPos
         absx, absy = abs(difx * xyScale), abs(dify)
         if maxThresh > absx > eyeThresh or maxThresh > absy > eyeThresh:
@@ -68,10 +73,10 @@ class eyeTracker:
         else: return 0
 
     def get_dir(self, dir):
-        if dir == 1: return 'up'
-        elif dir == 2: return 'right'
-        elif dir == 3: return 'down'
-        elif dir == 4: return 'left'
+        if dir == 1: return 'UP'
+        elif dir == 2: return 'RIGHT'
+        elif dir == 3: return 'DOWN'
+        elif dir == 4: return 'LEFT'
         return
 
     # return綠框的兩端點 [min(x, y), max(x, y)]
@@ -108,6 +113,10 @@ class eyeTracker:
             if not scanned:
                 scanned = True
         return np.average(PosList, axis=0), PosList, scanned
+    
+    def update_mainPos(self):
+        self.mainPos[0] = np.average(self.lPosList, axis=0)
+        self.mainPos[1] = np.average(self.rPosList, axis=0)
 
     # 產生最終結果
     def get_sliding_window_output(self):
@@ -150,12 +159,15 @@ class eyeTracker:
 
         if lret:
             cv2.circle(self.curFrame, (lpupil[0], lpupil[1]), 4, (0, 0, 255), -1)
-            self.mainPos[0], self.lPosList, self.lscanned = self.get_mainPos_coord(lpupil, self.lPosList, self.lscanned)
+            lMainPos, self.lPosList, self.lscanned = self.get_mainPos_coord(lpupil, self.lPosList, self.lscanned)
         if rret:
             cv2.circle(self.curFrame, (rpupil[0], rpupil[1]), 4, (0, 0, 255), -1)
-            self.mainPos[1], self.rPosList, self.rscanned = self.get_mainPos_coord(rpupil, self.rPosList, self.rscanned)
-                
-
+            rMainPos, self.rPosList, self.rscanned = self.get_mainPos_coord(rpupil, self.rPosList, self.rscanned)
+        
+        self.track_cnt += 1
+        if self.track_cnt == 3:
+            self.update_mainPos()
+            self.track_cnt = 0
         if self.lscanned and self.rscanned:
             # 顯示平均藍點
             cv2.circle(self.curFrame, (int(self.mainPos[0][0]), int(self.mainPos[0][1])), 4, (255, 0, 0), -1)

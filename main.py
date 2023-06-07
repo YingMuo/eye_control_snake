@@ -1,6 +1,9 @@
 import sys
 import pygame
 import random
+import cv2
+import numpy as np
+import eyetrack
 
 # 初始化 Pygame
 pygame.init()
@@ -21,7 +24,7 @@ pygame.display.set_caption("貪吃蛇遊戲")
 
 # 定義貪吃蛇初始位置和大小
 snake_block_size = 20
-snake_speed = 10
+snake_speed = 1
 snake_list = []
 snake_length = 1
 snake_head = [window_width / 2, window_height / 2]
@@ -118,8 +121,59 @@ def draw_food(food_block_size, food_pos):
     # 繪製食物
     pygame.draw.rect(screen, RED, [food_pos[0], food_pos[1], food_block_size, food_block_size])
 
+# 初始化攝像頭
+camera = cv2.VideoCapture(0)
+# camera.set(4, window_width)
+# camera.set(3, window_height)
+camera_surface = pygame.Surface(window_size)
+eyetracker = eyetrack.eyeTracker()
+
+def eye_detect():
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    return
+        ret, frame = camera.read()
+        eyetracker.eye_track(frame)
+        cur_frame = eyetracker.get_output_img()
+        cur_frame = cv2.cvtColor(cur_frame, cv2.COLOR_BGR2RGB)
+        cur_frame = np.rot90(cur_frame)
+        cur_frame = np.flip(cur_frame, 0)
+
+        cur_frame = pygame.surfarray.make_surface(cur_frame)
+        # 將攝像頭影像繪製到Pygame Surface上
+        camera_surface.blit(cur_frame, (0, 0))
+
+        # 更新Pygame視窗
+        screen.blit(camera_surface, (0, 0))
+        pygame.display.flip()
+
+def get_eye_detect():
+    global clock
+    global eyetracker
+    dir_list = []
+    for i in range(5):
+        ret, frame = camera.read()
+        eyetracker.eye_track(frame)
+        cur_frame = eyetracker.get_output_img()
+        cv2.imshow('QQ', cur_frame)
+        dir_list.append(eyetracker.get_sliding_window_output())
+    # eyetracker.update_mainPos()
+    cnt = 0
+    dir = ""
+    for cur_dir in dir_list:
+        cur_cnt = dir_list.count(cur_dir)
+        if cur_cnt > cnt:
+            cnt = cur_cnt
+            dir = cur_dir
+    return dir
 
 # 遊戲迴圈
+need_eye_detect = True
 running = True
 show_init = True
 show_over = False
@@ -130,13 +184,18 @@ while running:
         game_init()
         show_init = False
 
-    clock.tick(snake_speed)
+    if need_eye_detect:
+        eye_detect()
+        need_eye_detect = False
+
+    # clock.tick(snake_speed)
+    change_to = get_eye_detect()
+    
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
             sys.exit()
-    # 使用自訂義方式更改方向
-    # change_to = get_eye_dir()
+        # 使用自訂義方式更改方向
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT and direction != "RIGHT":
                 change_to = "LEFT"
@@ -146,6 +205,8 @@ while running:
                 change_to = "UP"
             elif event.key == pygame.K_DOWN and direction != "UP":
                 change_to = "DOWN"
+            elif event.key == pygame.K_RETURN:
+                need_eye_detect = True
 
     # 更新貪吃蛇的方向
     if change_to == "LEFT" and direction != "RIGHT":
